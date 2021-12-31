@@ -1,0 +1,248 @@
+diff --git a/include/GameObject.h b/include/GameObject.h
+index 1d56d2e..cd7b777 100644
+--- a/include/GameObject.h
++++ b/include/GameObject.h
+@@ -9,16 +9,16 @@ public:
+ 
+   virtual void Draw() const = 0;
+ 
+-  inline void SetPos(double nx, double ny) {
++  virtual void SetPos(double nx, double ny) {
+     x = nx;
+     y = ny;
+   }
+ 
+-  inline double GetY() const { return y; }
+-  inline double GetX() const { return x; }
++  virtual double GetY() const { return y; }
++  virtual double GetX() const { return x; }
+ 
+-  inline void SetWidth(uint16_t widthN) { width = widthN; }
+-  inline uint16_t GetWidth() const { return width; }
++  virtual void SetWidth(uint16_t widthN) { width = widthN; }
++  virtual uint16_t GetWidth() const { return width; }
+ 
+ protected:
+   double x, y;
+diff --git a/include/TankAdaptee.h b/include/TankAdaptee.h
+new file mode 100644
+index 0000000..676040b
+--- /dev/null
++++ b/include/TankAdaptee.h
+@@ -0,0 +1,31 @@
++#ifndef TANKADAPTEE_H
++#define TANKADAPTEE_H
++
++#include <stdint.h>
++#include <iostream>
++
++class TankAdaptee {
++public:
++
++    TankAdaptee() : x(0.0), y(0.0), width(0) { }
++
++    void Paint();
++    bool isInRange(double x1, double x2) const;
++
++    inline uint16_t GetScore() const { return score; }
++
++    inline void SetPos(double nx, double ny) { x = nx; y = ny; }
++    inline double GetY() const { return y; }
++    inline double GetX() const { return x; }
++
++    inline void SetWidth(uint16_t widthN) { width = widthN; }
++    inline uint16_t GetWidth() const { return width; }
++
++protected:
++
++    double x, y;
++    uint16_t width;
++    const uint16_t score = 40;
++};
++
++#endif // TANKADAPTEE_H
+diff --git a/include/TankAdapter.h b/include/TankAdapter.h
+new file mode 100644
+index 0000000..2dcbc0f
+--- /dev/null
++++ b/include/TankAdapter.h
+@@ -0,0 +1,39 @@
++#ifndef TANKADAPTER_H
++#define TANKADAPTER_H
++
++#include "DestroyableGroundObject.h"
++#include "TankAdaptee.h"
++
++class TankAdapter: public DestroyableGroundObject {
++public:
++    TankAdapter( std::string p) : param(p)
++    {
++     tank=new TankAdaptee();
++     int pos1=param.find(';');
++     x=std::atof(param.substr(0,pos1).c_str());
++     int pos2=param.rfind(';');
++     y=std::atof(param.substr(pos1+1,pos2).c_str());
++     this->SetPos(x,y);
++     width=std::atoi(param.substr(pos2+1,param.size()).c_str());
++     this->SetWidth(width);
++    };
++
++private:
++    ~TankAdapter() {
++      delete tank;
++    };
++    void SetPos(double nx, double ny) override;
++    uint16_t GetWidth() const override;
++
++    void Draw() const override;
++    bool isInside(double x1, double x2) const override;
++
++    inline uint16_t GetScore() const override {return tank->GetScore();};
++
++    void SetWidth(uint16_t widthN) override;
++
++    TankAdaptee* tank;
++    std::string param;
++};
++
++#endif // TANKADAPTER_H
+diff --git a/src/SBomber.cpp b/src/SBomber.cpp
+index 2bd57d7..bf43d5b 100644
+--- a/src/SBomber.cpp
++++ b/src/SBomber.cpp
+@@ -10,6 +10,11 @@
+ #include <chrono>
+ #include <thread>
+ 
++#include "include/TankAdaptee.h"
++#include "include/TankAdapter.h"
++
++#include <iostream>
++
+ SBomber::SBomber()
+   : exitFlag(false), startTime(0), finishTime(0), deltaTime(0), passedTime(0),
+     fps(0), bombsNumber(10), score(0) {
+@@ -44,10 +49,15 @@ SBomber::SBomber()
+   pTank->SetPos(30, groundY - 1);
+   vecStaticObj.push_back(pTank);
+ 
+-  pTank = new Tank;
+-  pTank->SetWidth(13);
+-  pTank->SetPos(50, groundY - 1);
+-  vecStaticObj.push_back(pTank);
++//  pTank = new Tank;
++//  pTank->SetWidth(13);
++//  pTank->SetPos(50, groundY - 1);
++//  vecStaticObj.push_back(pTank);
++
++    std::string  gr="50;"+ std::to_string(groundY - 1) +";13";
++    TankAdapter* pTankFromString=new TankAdapter(gr);
++    vecStaticObj.push_back(pTankFromString);
++
+ 
+   House* pHouse = new House;
+   pHouse->SetWidth(13);
+@@ -153,6 +163,7 @@ std::vector<DestroyableGroundObject*> SBomber::FindDestoyableGroundObjects() con
+   std::vector<DestroyableGroundObject*> vec;
+   Tank* pTank;
+   House* pHouse;
++  TankAdapter* pTankAdapter;
+   for (size_t i = 0; i < vecStaticObj.size(); i++) {
+     pTank = dynamic_cast<Tank*>(vecStaticObj[i]);
+     if (pTank != nullptr) {
+@@ -165,6 +176,13 @@ std::vector<DestroyableGroundObject*> SBomber::FindDestoyableGroundObjects() con
+       vec.push_back(pHouse);
+       continue;
+     }
++
++    pTankAdapter = dynamic_cast<TankAdapter*>(vecStaticObj[i]);
++    if (pTankAdapter != nullptr) {
++      vec.push_back(pTankAdapter);
++      continue;
++    }
++
+   }
+ 
+   return vec;
+diff --git a/src/TankAdaptee.cpp b/src/TankAdaptee.cpp
+new file mode 100644
+index 0000000..7bbed96
+--- /dev/null
++++ b/src/TankAdaptee.cpp
+@@ -0,0 +1,42 @@
++#include <iostream>
++
++#include "include/TankAdaptee.h"
++#include "include/ScreenSingleton.h"
++
++using namespace std;
++
++    void TankAdaptee::Paint() {
++
++        ScreenSingleton::getInstance().SetColor(CC_Green);
++        ScreenSingleton::getInstance().GotoXY(x, y - 3);
++        cout << "    ######";
++        ScreenSingleton::getInstance().GotoXY(x-2, y - 2);
++        cout << "########   ##";
++        ScreenSingleton::getInstance().GotoXY(x, y - 1);
++        cout << "    ######";
++        ScreenSingleton::getInstance().GotoXY(x,y);
++        cout << " ############";
++
++    };
++    bool TankAdaptee::isInRange(double x1, double x2) const {
++        const double XBeg = x + 2;
++        const double XEnd = x + width - 1;
++
++        if (x1 < XBeg && x2 > XEnd)
++        {
++            return true;
++        }
++
++        if (x1 > XBeg && x1 < XEnd)
++        {
++            return true;
++        }
++
++        if (x2 > XBeg && x2 < XEnd)
++        {
++            return true;
++        }
++
++        return false;
++    };
++
+diff --git a/src/TankAdapter.cpp b/src/TankAdapter.cpp
+new file mode 100644
+index 0000000..aa369ae
+--- /dev/null
++++ b/src/TankAdapter.cpp
+@@ -0,0 +1,28 @@
++#include "include/TankAdapter.h"
++#include "include/GameObject.h"
++
++
++void TankAdapter::SetPos(double nx, double ny)
++{
++    tank->SetPos(nx, ny);
++}
++
++uint16_t TankAdapter::GetWidth() const
++{
++    return tank->GetWidth();
++}
++
++void TankAdapter::Draw() const
++{
++    tank->Paint();
++};
++
++bool TankAdapter::isInside(double x1, double x2) const
++{
++    return tank->isInRange(x1, x2);
++};
++
++void TankAdapter::SetWidth(uint16_t widthN)
++{
++    tank->SetWidth(widthN);
++};
